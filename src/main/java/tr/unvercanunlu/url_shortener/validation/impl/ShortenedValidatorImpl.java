@@ -8,6 +8,11 @@ public class ShortenedValidatorImpl extends BaseTextValidator {
 
   @Override
   public void validate(String shortened) {
+    checkNotEmpty(shortened);
+    checkLengthValid(shortened);
+  }
+
+  private void checkNotEmpty(String shortened) {
     if (isEmpty(shortened)) {
       String message = "Shortened missing!";
 
@@ -15,7 +20,9 @@ public class ShortenedValidatorImpl extends BaseTextValidator {
 
       throw new IllegalArgumentException(message);
     }
+  }
 
+  private void checkLengthValid(String shortened) {
     if (shortened.length() != AppConfig.SHORT_URL_LENGTH) {
       String message = "Shortened length invalid: shortened=%s".formatted(shortened);
 

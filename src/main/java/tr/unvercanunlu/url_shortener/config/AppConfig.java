@@ -19,4 +19,8 @@ public class AppConfig {
   // web protocol
   public static final Set<String> WEB_PROTOCOLS = Set.of("http", "https");
 
+  // time-to-live
+  public static final boolean TTL_ENABLED = true;
+  public static final int TTL_DAYS = 30;
+
 }

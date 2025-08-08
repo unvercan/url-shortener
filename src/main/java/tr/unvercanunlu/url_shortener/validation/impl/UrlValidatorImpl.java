@@ -10,6 +10,12 @@ public class UrlValidatorImpl extends BaseTextValidator {
 
   @Override
   public void validate(String url) {
+    checkNotEmpty(url);
+    URI parsed = parse(url);
+    hasAllowedProtocol(parsed);
+  }
+
+  private void checkNotEmpty(String url) {
     if (isEmpty(url)) {
       String message = "URL missing!";
 
@@ -17,11 +23,9 @@ public class UrlValidatorImpl extends BaseTextValidator {
 
       throw new IllegalArgumentException(message);
     }
-
-    parseUrl(url);
   }
 
-  private void parseUrl(String url) {
+  private URI parse(String url) {
     URI parsed;
 
     try {
@@ -35,7 +39,12 @@ public class UrlValidatorImpl extends BaseTextValidator {
       throw new IllegalArgumentException(message, e);
     }
 
-    String scheme = parsed.getScheme();
+    return parsed;
+  }
+
+  private void hasAllowedProtocol(URI url) {
+    String scheme = url.getScheme();
+
     if ((scheme == null) || !AppConfig.WEB_PROTOCOLS.contains(scheme.toLowerCase())) {
       String message = "Invalid web URL: url=%s".formatted(url);
 
