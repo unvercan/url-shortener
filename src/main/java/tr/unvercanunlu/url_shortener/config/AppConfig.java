@@ -1,5 +1,6 @@
 package tr.unvercanunlu.url_shortener.config;
 
+import java.util.Set;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
@@ -14,5 +15,8 @@ public class AppConfig {
 
   // shorten
   public static final int SHORTEN_TRY_MAX = 100;
+
+  // web protocol
+  public static final Set<String> WEB_PROTOCOLS = Set.of("http", "https");
 
 }
