@@ -1,13 +1,12 @@
 # URL Shortener (Random-Based)
-A thread-safe, in-memory URL shortener in Java.
-Generates random short codes for valid URLs and stores them bidirectionally for fast lookup.
+A thread-safe, in-memory URL shortener in Java. Supports TTL, usage metrics, and optional archiving of expired links.
 
 ## Features
-* Random short URL generation (configurable)
+* Random short code generation (configurable)
 * Thread-safe with `ConcurrentHashMap` + `ReentrantReadWriteLock`
-* Duplicate prevention and collision retry
-* Input validation and clear error handling
-* Detailed logging with SLF4J
+* Expand count tracking per shortened URL
+* TTL support (with optional archiving of expired entries)
+* Clear validation and detailed logging
 
 ## Configuration (`AppConfig.java`)
 ```java
@@ -16,19 +15,21 @@ SHORT_URL_CONTAINS_UPPERCASE = true
 SHORT_URL_CONTAINS_DIGIT = true
 SHORT_URL_CONTAINS_DUPLICATE = true
 SHORTEN_TRY_MAX = 100
-WEB_PROTOCOLS = Set.of("http", "https")
+WEB_PROTOCOLS = Set.of("http","https")
+TTL_ENABLED = true
+TTL_DAYS = 30
+ARCHIVING_ENABLED = true
 ```
 
 ## API
-### `shorten(String url)`
-Generates and stores a unique short code for the given URL.
-
-### `expand(String shortened)`
-Returns the original URL if it exists.
+* `shorten(String url)` → generates and stores a unique short code
+* `expand(String shortened)` → returns original URL (if exists & not expired)
+* `countExpand(String shortened)` → returns how many times it was expanded
 
 ## Example
 ```java
-UrlShortener service = new RandomBasedUrlShortenerImpl();
+UrlShortenerService service = new RandomBasedUrlShortenerServiceImpl();
 String shortUrl = service.shorten("https://example.com");
 String original = service.expand(shortUrl).orElse("Not found");
+long count = service.countExpand(shortUrl);
 ```

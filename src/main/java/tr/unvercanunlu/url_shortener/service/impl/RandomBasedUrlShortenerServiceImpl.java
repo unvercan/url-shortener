@@ -10,18 +10,19 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import lombok.extern.slf4j.Slf4j;
 import tr.unvercanunlu.url_shortener.config.AppConfig;
 import tr.unvercanunlu.url_shortener.model.UrlEntry;
-import tr.unvercanunlu.url_shortener.service.UrlShortener;
+import tr.unvercanunlu.url_shortener.service.UrlShortenerService;
 import tr.unvercanunlu.url_shortener.util.TextUtil;
 import tr.unvercanunlu.url_shortener.validation.Validator;
 import tr.unvercanunlu.url_shortener.validation.impl.ShortenedValidatorImpl;
 import tr.unvercanunlu.url_shortener.validation.impl.UrlValidatorImpl;
 
 @Slf4j
-public class RandomBasedUrlShortenerImpl implements UrlShortener {
+public class RandomBasedUrlShortenerServiceImpl implements UrlShortenerService {
 
   // bidirectional storage for fast access
   private final ConcurrentMap<String, UrlEntry> pairs = new ConcurrentHashMap<>();
   private final ConcurrentMap<String, String> reversePairs = new ConcurrentHashMap<>();
+  private final ConcurrentMap<String, UrlEntry> expiredPairs = new ConcurrentHashMap<>();
 
   // synchronization lock
   private final ReadWriteLock lock = new ReentrantReadWriteLock();
@@ -73,9 +74,15 @@ public class RandomBasedUrlShortenerImpl implements UrlShortener {
       // retrieve entry
       UrlEntry entry = pairs.get(shortened);
 
+      // update metrics
+      if (entry != null) {
+        entry = updateMetric(shortened, entry);
+        log.info("Metric of shortened for URL updated: url=%s shortened=%s expandCount=%d".formatted(entry.url(), shortened, entry.expandCount()));
+      }
+
       // remove if expired
       if ((entry != null) && (entry.createdAt() != null) && AppConfig.TTL_ENABLED) {
-        removeIfExpired(shortened, entry.url(), entry.createdAt());
+        removeIfExpired(shortened, entry);
       }
 
       Optional<String> url = Optional.ofNullable(entry).map(UrlEntry::url);
@@ -89,15 +96,42 @@ public class RandomBasedUrlShortenerImpl implements UrlShortener {
     }
   }
 
-  private void removeIfExpired(String shortened, String url, Instant createdAt) {
+  @Override
+  public long countExpand(String shortened) {
+    // validation
+    shortenedValidator.validate(shortened);
+    log.info("Shortened validated: shortened=%s".formatted(shortened));
+
+    long result = 0;
+
+    if (pairs.containsKey(shortened)) {
+      UrlEntry entry = pairs.get(shortened);
+      result = entry.expandCount();
+    } else if (AppConfig.ARCHIVING_ENABLED && expiredPairs.containsKey(shortened)) {
+      UrlEntry expiredEntry = expiredPairs.get(shortened);
+      result = expiredEntry.expandCount();
+    }
+
+    log.info("Expand count retrieved for shortened: shortened=%s count=%d".formatted(shortened, result));
+
+    return result;
+  }
+
+  private void removeIfExpired(String shortened, UrlEntry entry) {
     Instant now = Instant.now();
-    Instant end = createdAt.plus(AppConfig.TTL_DAYS, ChronoUnit.DAYS);
+    Instant end = entry.createdAt().plus(AppConfig.TTL_DAYS, ChronoUnit.DAYS);
 
     if (end.isBefore(now)) {
-      pairs.remove(shortened);
-      reversePairs.remove(url);
+      log.info("TTL expired for URL: url=%s shortened=%s".formatted(entry.url(), shortened));
 
-      log.info("TTL expired for URL: url=%s shortened=%s".formatted(url, shortened));
+      pairs.remove(shortened);
+      reversePairs.remove(entry.url());
+      log.info("Shortened for URL removed because TTL expired: url=%s shortened=%s".formatted(entry.url(), shortened));
+
+      if (AppConfig.ARCHIVING_ENABLED) {
+        expiredPairs.put(shortened, entry);
+        log.info("TTL expired shortened for URL archived: url=%s shortened=%s".formatted(entry.url(), shortened));
+      }
     }
   }
 
@@ -138,7 +172,7 @@ public class RandomBasedUrlShortenerImpl implements UrlShortener {
       tryCount++;
 
       // check duplicate
-    } while (pairs.containsKey(shortened));
+    } while (pairs.containsKey(shortened) || (AppConfig.ARCHIVING_ENABLED && expiredPairs.containsKey(shortened)));
 
     // warn attempts
     if (tryCount > 1) {
@@ -156,11 +190,25 @@ public class RandomBasedUrlShortenerImpl implements UrlShortener {
     }
 
     // create entry
-    UrlEntry entry = new UrlEntry(url, now);
+    UrlEntry entry = new UrlEntry(url, now, 0);
 
     // store URL entry
     pairs.put(shortened, entry);
     reversePairs.put(url, shortened);
+  }
+
+  private UrlEntry updateMetric(String shortened, UrlEntry entry) {
+    // increase expand count
+    UrlEntry updated = new UrlEntry(
+        entry.url(),
+        entry.createdAt(),
+        (entry.expandCount() + 1)
+    );
+
+    // update
+    pairs.put(shortened, updated);
+
+    return updated;
   }
 
 }

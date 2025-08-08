@@ -4,7 +4,8 @@ import java.time.Instant;
 
 public record UrlEntry(
     String url,
-    Instant createdAt
+    Instant createdAt,
+    long expandCount
 ) {
 
 }

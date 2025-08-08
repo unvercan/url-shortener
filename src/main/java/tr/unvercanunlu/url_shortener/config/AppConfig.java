@@ -23,4 +23,7 @@ public class AppConfig {
   public static final boolean TTL_ENABLED = true;
   public static final int TTL_DAYS = 30;
 
+  // archive
+  public static final boolean ARCHIVING_ENABLED = true;
+
 }
