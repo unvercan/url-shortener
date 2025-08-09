@@ -1,6 +1,7 @@
 package tr.unvercanunlu.url_shortener.config;
 
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
@@ -25,5 +26,10 @@ public class AppConfig {
 
   // archive
   public static final boolean ARCHIVING_ENABLED = true;
+
+  // scheduler
+  public static final String EXPIRATION_CHECK_THREAD_NAME = "expiration-check-thread";
+  public static final long EXPIRATION_CHECK_DURATION = 1;
+  public static final TimeUnit EXPIRATION_CHECK_TIME_UNIT = TimeUnit.HOURS;
 
 }

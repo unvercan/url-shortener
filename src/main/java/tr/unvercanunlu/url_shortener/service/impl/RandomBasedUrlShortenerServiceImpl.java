@@ -1,28 +1,22 @@
 package tr.unvercanunlu.url_shortener.service.impl;
 
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import lombok.extern.slf4j.Slf4j;
 import tr.unvercanunlu.url_shortener.config.AppConfig;
+import tr.unvercanunlu.url_shortener.database.InMemoryDatabase;
 import tr.unvercanunlu.url_shortener.model.UrlEntry;
 import tr.unvercanunlu.url_shortener.service.UrlShortenerService;
-import tr.unvercanunlu.url_shortener.util.TextUtil;
+import tr.unvercanunlu.url_shortener.util.TTLHelper;
+import tr.unvercanunlu.url_shortener.util.TextHelper;
 import tr.unvercanunlu.url_shortener.validation.Validator;
 import tr.unvercanunlu.url_shortener.validation.impl.ShortenedValidatorImpl;
 import tr.unvercanunlu.url_shortener.validation.impl.UrlValidatorImpl;
 
 @Slf4j
 public class RandomBasedUrlShortenerServiceImpl implements UrlShortenerService {
-
-  // bidirectional storage for fast access
-  private final ConcurrentMap<String, UrlEntry> pairs = new ConcurrentHashMap<>();
-  private final ConcurrentMap<String, String> reversePairs = new ConcurrentHashMap<>();
-  private final ConcurrentMap<String, UrlEntry> expiredPairs = new ConcurrentHashMap<>();
 
   // synchronization lock
   private final ReadWriteLock lock = new ReentrantReadWriteLock();
@@ -72,7 +66,7 @@ public class RandomBasedUrlShortenerServiceImpl implements UrlShortenerService {
 
     try {
       // retrieve entry
-      UrlEntry entry = pairs.get(shortened);
+      UrlEntry entry = InMemoryDatabase.PAIRS.get(shortened);
 
       // update metrics
       if (entry != null) {
@@ -82,7 +76,7 @@ public class RandomBasedUrlShortenerServiceImpl implements UrlShortenerService {
 
       // remove if expired
       if ((entry != null) && (entry.createdAt() != null) && AppConfig.TTL_ENABLED) {
-        removeIfExpired(shortened, entry);
+        TTLHelper.removeIfExpired(shortened, entry);
       }
 
       Optional<String> url = Optional.ofNullable(entry).map(UrlEntry::url);
@@ -104,11 +98,11 @@ public class RandomBasedUrlShortenerServiceImpl implements UrlShortenerService {
 
     long result = 0;
 
-    if (pairs.containsKey(shortened)) {
-      UrlEntry entry = pairs.get(shortened);
+    if (InMemoryDatabase.PAIRS.containsKey(shortened)) {
+      UrlEntry entry = InMemoryDatabase.PAIRS.get(shortened);
       result = entry.expandCount();
-    } else if (AppConfig.ARCHIVING_ENABLED && expiredPairs.containsKey(shortened)) {
-      UrlEntry expiredEntry = expiredPairs.get(shortened);
+    } else if (AppConfig.ARCHIVING_ENABLED && InMemoryDatabase.EXPIRED_PAIRS.containsKey(shortened)) {
+      UrlEntry expiredEntry = InMemoryDatabase.EXPIRED_PAIRS.get(shortened);
       result = expiredEntry.expandCount();
     }
 
@@ -117,27 +111,9 @@ public class RandomBasedUrlShortenerServiceImpl implements UrlShortenerService {
     return result;
   }
 
-  private void removeIfExpired(String shortened, UrlEntry entry) {
-    Instant now = Instant.now();
-    Instant end = entry.createdAt().plus(AppConfig.TTL_DAYS, ChronoUnit.DAYS);
-
-    if (end.isBefore(now)) {
-      log.info("TTL expired for URL: url=%s shortened=%s".formatted(entry.url(), shortened));
-
-      pairs.remove(shortened);
-      reversePairs.remove(entry.url());
-      log.info("Shortened for URL removed because TTL expired: url=%s shortened=%s".formatted(entry.url(), shortened));
-
-      if (AppConfig.ARCHIVING_ENABLED) {
-        expiredPairs.put(shortened, entry);
-        log.info("TTL expired shortened for URL archived: url=%s shortened=%s".formatted(entry.url(), shortened));
-      }
-    }
-  }
-
   private void checkUrlAlreadyExists(String url) {
     // check exists already
-    if (reversePairs.containsKey(url)) {
+    if (InMemoryDatabase.REVERSE_PAIRS.containsKey(url)) {
       String message = "URL already exists: url=%s".formatted(url);
 
       log.warn(message);
@@ -161,7 +137,7 @@ public class RandomBasedUrlShortenerServiceImpl implements UrlShortenerService {
       }
 
       // generate randomly
-      shortened = TextUtil.randomTextGenerate(
+      shortened = TextHelper.randomTextGenerate(
           AppConfig.SHORT_URL_LENGTH,
           AppConfig.SHORT_URL_LENGTH,
           AppConfig.SHORT_URL_CONTAINS_DUPLICATE,
@@ -172,7 +148,7 @@ public class RandomBasedUrlShortenerServiceImpl implements UrlShortenerService {
       tryCount++;
 
       // check duplicate
-    } while (pairs.containsKey(shortened) || (AppConfig.ARCHIVING_ENABLED && expiredPairs.containsKey(shortened)));
+    } while (InMemoryDatabase.PAIRS.containsKey(shortened) || (AppConfig.ARCHIVING_ENABLED && InMemoryDatabase.EXPIRED_PAIRS.containsKey(shortened)));
 
     // warn attempts
     if (tryCount > 1) {
@@ -193,8 +169,8 @@ public class RandomBasedUrlShortenerServiceImpl implements UrlShortenerService {
     UrlEntry entry = new UrlEntry(url, now, 0);
 
     // store URL entry
-    pairs.put(shortened, entry);
-    reversePairs.put(url, shortened);
+    InMemoryDatabase.PAIRS.put(shortened, entry);
+    InMemoryDatabase.REVERSE_PAIRS.put(url, shortened);
   }
 
   private UrlEntry updateMetric(String shortened, UrlEntry entry) {
@@ -206,7 +182,7 @@ public class RandomBasedUrlShortenerServiceImpl implements UrlShortenerService {
     );
 
     // update
-    pairs.put(shortened, updated);
+    InMemoryDatabase.PAIRS.put(shortened, updated);
 
     return updated;
   }

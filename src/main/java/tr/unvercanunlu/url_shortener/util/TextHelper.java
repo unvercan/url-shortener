@@ -11,7 +11,7 @@ import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
-public class TextUtil {
+public class TextHelper {
 
   public static String randomTextGenerate(int minLength, int maxLength, boolean containsDuplicate, boolean containsDigit, boolean containsUpperCase) {
     Random random = ThreadLocalRandom.current();
